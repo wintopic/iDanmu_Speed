@@ -1,0 +1,39 @@
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+mini_gui/build/
+mini_gui/dist/
+*.spec.bak
+
+# Local runtime outputs
+downloads/
+mini_gui/downloads/
+cloud_downloads_test/
+
+# Tool caches
+.ruff_cache/
+
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
