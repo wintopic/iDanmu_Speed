@@ -39,19 +39,13 @@ jobs:
         run: |
           python -m PyInstaller --noconfirm --clean --windowed --onefile --name iDanmu_Speed_Mini --paths . --add-data "danmu_api-main;danmu_api-main" mini_gui/mini_gui.py
 
-      - name: Package artifacts
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
-          Compress-Archive -Path "dist\iDanmu_Speed.exe" -DestinationPath "artifacts\iDanmu_Speed_windows_x64.zip" -Force
-          Compress-Archive -Path "dist\iDanmu_Speed_Mini.exe" -DestinationPath "artifacts\iDanmu_Speed_Mini_windows_x64.zip" -Force
-          Get-ChildItem artifacts
-
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-executables
-          path: artifacts/*.zip
+          path: |
+            dist/iDanmu_Speed.exe
+            dist/iDanmu_Speed_Mini.exe
           if-no-files-found: error
 
   release:
@@ -72,4 +66,4 @@ jobs:
       - name: Attach artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.zip
+          files: artifacts/*.exe
