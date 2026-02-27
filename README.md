@@ -1,6 +1,6 @@
 ﻿# iDanmu Toolkit
 
-面向 Windows 的弹幕批量下载工具集（纯 Python 运行时，不依赖 Node.js）。
+面向 Windows 的弹幕批量下载工具集。
 
 包含：
 - `danmu_batch_downloader.py`：命令行批量下载器
