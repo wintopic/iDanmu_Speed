@@ -1,31 +1,37 @@
 ﻿# iDanmu Mini GUI
 
-瀵瑰簲鏂囦欢锛歚mini_gui.py`
+对应文件：`mini_gui.py`
 
-閫傚悎鈥滃揩閫熸悳鍓?-> 涓€閿姞鍏ュ叏闆?-> 鐩存帴涓嬭浇鈥濈殑杞婚噺鍦烘櫙銆?
-## 鍚姩
+适合“快速搜索 -> 一键加入全集 -> 直接下载”的轻量场景。
+
+## 启动
 
 ```powershell
 .\run-mini-gui.bat
 ```
 
-鎴栵細
+或：
 
 ```powershell
 python .\mini_gui.py
 ```
 
-## 鍔熻兘
+## 功能
 
-- 鑷姩瑙ｆ瀽鏈嶅姟鍦板潃涓殑 token
-- 鎼滅储鏉ユ簮骞跺睍绀虹粨鏋?- 涓€閿姞鍏ユ墍閫夋潵婧愬叏闆?- 闃熷垪鍘婚噸锛堟寜 commentId锛?- 瀹炴椂鏃ュ織涓庡仠姝换鍔?
-## 鎵撳寘
+- 自动解析服务地址中的 token
+- 搜索来源并展示结果
+- 一键加入所选来源全集
+- 队列去重（按 commentId）
+- 实时日志与停止任务
+- 支持手动全屏切换：`F11` 切换、`Esc` 退出全屏
+
+## 打包
 
 ```powershell
 .\build-mini-exe.bat
 ```
 
-杈撳嚭锛?
+输出：
 - `mini_gui\dist\iDanmuMini\iDanmuMini.exe`
 
-璇存槑锛氳繍琛?EXE 涓嶉渶瑕?Node.js銆?
+说明：运行 EXE 不需要 Node.js。
