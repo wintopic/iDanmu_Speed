@@ -6,6 +6,7 @@
 
 - Windows
 - Python 3.10+
+- Node.js 18+ 与 npm（启用纯本地 API 时需要）
 
 ## 快速开始
 
@@ -22,17 +23,25 @@ python .\danmu_batch_downloader.py `
   --token 87654321 `
   --output .\downloads `
   --format xml `
-  --concurrency 4 `
-  --retries 3 `
-  --retry-delay-ms 2500 `
-  --throttle-ms 300 `
+  --concurrency 6 `
+  --retries 5 `
+  --retry-delay-ms 1500 `
+  --throttle-ms 120 `
   --timeout-ms 45000
 ```
+
+默认参数 `--local-api auto` 会在 `base-url` 为本地地址时自动启动 `danmu_api-main`。
 
 也可以：
 
 ```powershell
 .\download.bat --input .\tasks.jsonl --base-url http://127.0.0.1:9321 --token 87654321
+```
+
+手动启动本地 API（可选）：
+
+```powershell
+.\run-local-api.bat
 ```
 
 ## 任务输入

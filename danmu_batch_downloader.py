@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Pure Python danmu batch downloader.
 
-This module is used by both CLI and GUI so runtime no longer depends on Node.js.
+This module is used by both CLI and GUI. It can also auto-start local
+danmu_api-main when the target API is localhost.
 """
 
 from __future__ import annotations
@@ -21,18 +22,21 @@ from typing import Any, Callable
 from urllib import error as url_error
 from urllib import parse as url_parse
 
+import local_danmu_api
+
 DEFAULTS: dict[str, Any] = {
-    "base_url": "http://127.0.0.1:9321",
+    "base_url": local_danmu_api.DEFAULT_LOCAL_BASE_URL,
     "token": "",
     "input": "",
     "output": "downloads",
     "format": "xml",
     "naming_rule": "{index:03d}_{base}",
-    "concurrency": 4,
-    "retries": 3,
-    "retry_delay_ms": 2500,
-    "throttle_ms": 300,
+    "concurrency": 6,
+    "retries": 5,
+    "retry_delay_ms": 1500,
+    "throttle_ms": 120,
     "timeout_ms": 45000,
+    "local_api": "auto",
 }
 
 RETRYABLE_WINERROR_CODES = {10053, 10054, 10060, 10061}
@@ -40,6 +44,8 @@ RETRYABLE_ERRNO_CODES = {54, 60, 104, 110, 111, 113}
 MAX_RETRY_DELAY_MS = 120000
 RETRY_JITTER_RATIO = 0.25
 RETRY_AFTER_STATUSES = {429, 503}
+FINAL_RATE_LIMIT_COOLDOWN_MS = 30000
+FINAL_NETWORK_COOLDOWN_MS = 15000
 RETRYABLE_ERROR_HINTS = (
     "connection reset",
     "connection aborted",
@@ -463,6 +469,13 @@ def _request_with_retry(
             if status >= 400:
                 http_error = HttpError(f"HTTP {status}", status, text, response_headers)
                 if attempt >= retries or not _is_retryable_status(status):
+                    if attempt >= retries and status in RETRY_AFTER_STATUSES:
+                        final_wait_ms = _compute_retry_delay_ms(
+                            attempt=attempt,
+                            retry_delay_ms=retry_delay_ms,
+                            status=status,
+                        )
+                        _extend_shared_retry_gate(max(FINAL_RATE_LIMIT_COOLDOWN_MS, final_wait_ms))
                     raise http_error
 
                 retry_after_ms = None
@@ -474,8 +487,7 @@ def _request_with_retry(
                     status=status,
                     retry_after_ms=retry_after_ms,
                 )
-                if status in RETRY_AFTER_STATUSES:
-                    _extend_shared_retry_gate(wait_ms)
+                _extend_shared_retry_gate(wait_ms)
                 time.sleep(wait_ms / 1000)
                 continue
 
@@ -488,6 +500,12 @@ def _request_with_retry(
                 body_status = _parse_maybe_int(decoded.get("errorCode"))
                 if body_status in RETRY_AFTER_STATUSES and decoded.get("success") is not True:
                     if attempt >= retries:
+                        final_wait_ms = _compute_retry_delay_ms(
+                            attempt=attempt,
+                            retry_delay_ms=retry_delay_ms,
+                            status=body_status,
+                        )
+                        _extend_shared_retry_gate(max(FINAL_RATE_LIMIT_COOLDOWN_MS, final_wait_ms))
                         raise HttpError(f"HTTP {body_status}", body_status, text, response_headers)
                     retry_after_ms = _parse_retry_after_ms(response_headers.get("retry-after"))
                     wait_ms = _compute_retry_delay_ms(
@@ -506,16 +524,27 @@ def _request_with_retry(
             if attempt >= retries:
                 raise RuntimeError(f"Invalid JSON response: {exc}") from exc
             wait_ms = _compute_retry_delay_ms(attempt=attempt, retry_delay_ms=retry_delay_ms)
+            _extend_shared_retry_gate(wait_ms)
             time.sleep(wait_ms / 1000)
         except url_error.URLError as exc:
-            if attempt >= retries or not _is_retryable_network_error(exc):
+            retryable_network_error = _is_retryable_network_error(exc)
+            if attempt >= retries or not retryable_network_error:
+                if retryable_network_error:
+                    final_wait_ms = _compute_retry_delay_ms(attempt=attempt, retry_delay_ms=retry_delay_ms)
+                    _extend_shared_retry_gate(max(FINAL_NETWORK_COOLDOWN_MS, final_wait_ms))
                 raise RuntimeError(_network_error_message(exc)) from exc
             wait_ms = _compute_retry_delay_ms(attempt=attempt, retry_delay_ms=retry_delay_ms)
+            _extend_shared_retry_gate(wait_ms)
             time.sleep(wait_ms / 1000)
         except Exception as exc:
-            if attempt >= retries or not _is_retryable_network_error(exc):
+            retryable_network_error = _is_retryable_network_error(exc)
+            if attempt >= retries or not retryable_network_error:
+                if retryable_network_error:
+                    final_wait_ms = _compute_retry_delay_ms(attempt=attempt, retry_delay_ms=retry_delay_ms)
+                    _extend_shared_retry_gate(max(FINAL_NETWORK_COOLDOWN_MS, final_wait_ms))
                 raise RuntimeError(str(exc)) from exc
             wait_ms = _compute_retry_delay_ms(attempt=attempt, retry_delay_ms=retry_delay_ms)
+            _extend_shared_retry_gate(wait_ms)
             time.sleep(wait_ms / 1000)
 
     raise RuntimeError("Request failed.")
@@ -733,15 +762,36 @@ def _normalize_options(raw: dict[str, Any]) -> dict[str, Any]:
     opts["retry_delay_ms"] = int(opts.get("retry_delay_ms", DEFAULTS["retry_delay_ms"]))
     opts["throttle_ms"] = int(opts.get("throttle_ms", DEFAULTS["throttle_ms"]))
     opts["timeout_ms"] = int(opts.get("timeout_ms", DEFAULTS["timeout_ms"]))
+    opts["local_api"] = _ensure_str(opts.get("local_api")).lower() or DEFAULTS["local_api"]
 
     if opts["format"] not in {"json", "xml"}:
         raise RuntimeError("--format must be json or xml")
+    if opts["local_api"] not in {"auto", "on", "off"}:
+        raise RuntimeError("--local-api must be auto, on or off")
     for key in ("concurrency", "retries", "retry_delay_ms", "throttle_ms", "timeout_ms"):
         if opts[key] < 0:
             raise RuntimeError(f"{key} must be >= 0")
     if opts["concurrency"] < 1:
         raise RuntimeError("concurrency must be >= 1")
     return opts
+
+
+def _ensure_local_api_if_needed(opts: dict[str, Any], emit: Callable[[str], None]) -> local_danmu_api.LocalApiHandle | None:
+    mode = opts.get("local_api", "auto")
+    is_local_target = local_danmu_api.is_local_base_url(opts["base_url"])
+
+    if mode == "off":
+        return None
+    if mode == "on" and not is_local_target:
+        raise RuntimeError("--local-api=on requires --base-url to point to localhost/127.0.0.1")
+    if mode == "auto" and not is_local_target:
+        return None
+
+    return local_danmu_api.ensure_local_api(
+        base_url=opts["base_url"],
+        token=opts["token"],
+        log_fn=emit,
+    )
 
 
 def run_download(
@@ -754,135 +804,141 @@ def run_download(
     opts = _normalize_options(options)
     emit = log_fn or print
     is_cancelled = is_cancelled or (lambda: False)
+    local_api_handle: local_danmu_api.LocalApiHandle | None = None
 
-    output_dir = Path(opts["output"]).resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        output_dir = Path(opts["output"]).resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    raw_tasks = tasks_override if tasks_override is not None else load_tasks(opts["input"])
-    tasks = [_normalize_task(task, index) for index, task in enumerate(raw_tasks)]
-    tasks = [task for task in tasks if not task["disabled"]]
-    if not tasks:
-        emit("No tasks to run.\n")
-        return 0
+        raw_tasks = tasks_override if tasks_override is not None else load_tasks(opts["input"])
+        tasks = [_normalize_task(task, index) for index, task in enumerate(raw_tasks)]
+        tasks = [task for task in tasks if not task["disabled"]]
+        if not tasks:
+            emit("No tasks to run.\n")
+            return 0
 
-    api_root = _normalize_api_root(opts["base_url"], opts["token"])
-    emit(f"API: {api_root}\n")
-    if opts["input"]:
-        emit(f"Input: {Path(opts['input']).resolve()}\n")
-    emit(f"Output: {output_dir}\n")
-    emit(f"Naming rule: {opts['naming_rule']}\n")
-    emit(f"Total tasks: {len(tasks)}\n")
-    emit(f"Concurrency: {opts['concurrency']}\n")
+        local_api_handle = _ensure_local_api_if_needed(opts, emit)
+        api_root = _normalize_api_root(opts["base_url"], opts["token"])
+        emit(f"API: {api_root}\n")
+        if opts["input"]:
+            emit(f"Input: {Path(opts['input']).resolve()}\n")
+        emit(f"Output: {output_dir}\n")
+        emit(f"Naming rule: {opts['naming_rule']}\n")
+        emit(f"Total tasks: {len(tasks)}\n")
+        emit(f"Concurrency: {opts['concurrency']}\n")
 
-    ctx = {
-        "api_root": api_root,
-        "output_dir": output_dir,
-        "default_format": opts["format"],
-        "naming_rule": opts["naming_rule"],
-        "retries": opts["retries"],
-        "retry_delay_ms": opts["retry_delay_ms"],
-        "timeout_ms": opts["timeout_ms"],
-    }
+        ctx = {
+            "api_root": api_root,
+            "output_dir": output_dir,
+            "default_format": opts["format"],
+            "naming_rule": opts["naming_rule"],
+            "retries": opts["retries"],
+            "retry_delay_ms": opts["retry_delay_ms"],
+            "timeout_ms": opts["timeout_ms"],
+        }
 
-    report: dict[str, Any] = {
-        "startedAt": _iso_now(),
-        "apiRoot": api_root,
-        "inputPath": str(Path(opts["input"]).resolve()) if opts["input"] else None,
-        "outputDir": str(output_dir),
-        "namingRule": opts["naming_rule"],
-        "total": len(tasks),
-        "success": 0,
-        "failed": 0,
-        "items": [],
-    }
+        report: dict[str, Any] = {
+            "startedAt": _iso_now(),
+            "apiRoot": api_root,
+            "inputPath": str(Path(opts["input"]).resolve()) if opts["input"] else None,
+            "outputDir": str(output_dir),
+            "namingRule": opts["naming_rule"],
+            "total": len(tasks),
+            "success": 0,
+            "failed": 0,
+            "items": [],
+        }
 
-    pointer_lock = threading.Lock()
-    schedule_lock = threading.Lock()
-    report_lock = threading.Lock()
+        pointer_lock = threading.Lock()
+        schedule_lock = threading.Lock()
+        report_lock = threading.Lock()
 
-    next_pointer = 0
-    next_schedule_time = time.monotonic()
-    throttle_sec = opts["throttle_ms"] / 1000
+        next_pointer = 0
+        next_schedule_time = time.monotonic()
+        throttle_sec = opts["throttle_ms"] / 1000
 
-    def schedule_start() -> None:
-        nonlocal next_schedule_time
-        if throttle_sec <= 0:
-            return
-        with schedule_lock:
-            now = time.monotonic()
-            wait = max(0.0, next_schedule_time - now)
-            next_schedule_time = max(now, next_schedule_time) + throttle_sec
-        if wait > 0:
-            time.sleep(wait)
+        def schedule_start() -> None:
+            nonlocal next_schedule_time
+            if throttle_sec <= 0:
+                return
+            with schedule_lock:
+                now = time.monotonic()
+                wait = max(0.0, next_schedule_time - now)
+                next_schedule_time = max(now, next_schedule_time) + throttle_sec
+            if wait > 0:
+                time.sleep(wait)
 
-    def next_task() -> dict[str, Any] | None:
-        nonlocal next_pointer
-        with pointer_lock:
-            if next_pointer >= len(tasks):
-                return None
-            task = tasks[next_pointer]
-            next_pointer += 1
-            return task
+        def next_task() -> dict[str, Any] | None:
+            nonlocal next_pointer
+            with pointer_lock:
+                if next_pointer >= len(tasks):
+                    return None
+                task = tasks[next_pointer]
+                next_pointer += 1
+                return task
 
-    def run_task(task: dict[str, Any]) -> None:
-        if is_cancelled():
-            return
-        schedule_start()
-        if is_cancelled():
-            return
-
-        emit(f"\n[{task['index']}/{len(tasks)}] Start... ")
-        try:
-            item = _process_task(ctx, task)
-            with report_lock:
-                report["items"].append(item)
-                report["success"] += 1
-            emit(f"OK -> {Path(item['output']).name}\n")
-        except Exception as exc:
-            err_msg = str(exc)
-            if isinstance(exc, HttpError):
-                err_msg = f"{exc}; body={str(exc.body)[:200]}"
-            with report_lock:
-                report["items"].append({"index": task["index"], "status": "failed", "error": err_msg})
-                report["failed"] += 1
-            emit(f"FAILED -> {err_msg}\n")
-
-    def worker() -> None:
-        while True:
+        def run_task(task: dict[str, Any]) -> None:
             if is_cancelled():
                 return
-            task = next_task()
-            if task is None:
+            schedule_start()
+            if is_cancelled():
                 return
-            run_task(task)
 
-    threads = [threading.Thread(target=worker, daemon=True) for _ in range(opts["concurrency"])]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
+            emit(f"\n[{task['index']}/{len(tasks)}] Start... ")
+            try:
+                item = _process_task(ctx, task)
+                with report_lock:
+                    report["items"].append(item)
+                    report["success"] += 1
+                emit(f"OK -> {Path(item['output']).name}\n")
+            except Exception as exc:
+                err_msg = str(exc)
+                if isinstance(exc, HttpError):
+                    err_msg = f"{exc}; body={str(exc.body)[:200]}"
+                with report_lock:
+                    report["items"].append({"index": task["index"], "status": "failed", "error": err_msg})
+                    report["failed"] += 1
+                emit(f"FAILED -> {err_msg}\n")
 
-    report["items"].sort(key=lambda item: item.get("index", 0))
-    report["cancelled"] = bool(is_cancelled())
-    report["endedAt"] = _iso_now()
+        def worker() -> None:
+            while True:
+                if is_cancelled():
+                    return
+                task = next_task()
+                if task is None:
+                    return
+                run_task(task)
 
-    report_path = output_dir / "download-report.json"
-    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        threads = [threading.Thread(target=worker, daemon=True) for _ in range(opts["concurrency"])]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
 
-    emit("\nDone.\n")
-    emit(f"Success: {report['success']}\n")
-    emit(f"Failed: {report['failed']}\n")
-    emit(f"Report: {report_path}\n")
+        report["items"].sort(key=lambda item: item.get("index", 0))
+        report["cancelled"] = bool(is_cancelled())
+        report["endedAt"] = _iso_now()
 
-    if report["cancelled"]:
-        return 130
-    if report["failed"] > 0:
-        return 2
-    return 0
+        report_path = output_dir / "download-report.json"
+        report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        emit("\nDone.\n")
+        emit(f"Success: {report['success']}\n")
+        emit(f"Failed: {report['failed']}\n")
+        emit(f"Report: {report_path}\n")
+
+        if report["cancelled"]:
+            return 130
+        if report["failed"] > 0:
+            return 2
+        return 0
+    finally:
+        if local_api_handle is not None and local_api_handle.started_by_tool:
+            local_api_handle.stop()
 
 
 def parse_cli_args(argv: list[str] | None = None) -> dict[str, Any]:
-    parser = argparse.ArgumentParser(description="iDanmu batch downloader (Python)")
+    parser = argparse.ArgumentParser(description="iDanmu_Speed batch downloader (Python)")
     parser.add_argument("--input", required=True, help="Path to tasks file (.json/.jsonl/.csv)")
     parser.add_argument("--base-url", default=DEFAULTS["base_url"], help="API base URL")
     parser.add_argument("--token", default=DEFAULTS["token"], help="Optional token")
@@ -894,6 +950,12 @@ def parse_cli_args(argv: list[str] | None = None) -> dict[str, Any]:
     parser.add_argument("--retry-delay-ms", type=int, default=DEFAULTS["retry_delay_ms"], help="Retry base delay in ms")
     parser.add_argument("--throttle-ms", type=int, default=DEFAULTS["throttle_ms"], help="Task start throttle in ms")
     parser.add_argument("--timeout-ms", type=int, default=DEFAULTS["timeout_ms"], help="Request timeout in ms")
+    parser.add_argument(
+        "--local-api",
+        default=DEFAULTS["local_api"],
+        choices=["auto", "on", "off"],
+        help="Auto-start local danmu_api-main when using localhost (default: auto)",
+    )
     args = parser.parse_args(argv)
     return {
         "input": args.input,
@@ -907,6 +969,7 @@ def parse_cli_args(argv: list[str] | None = None) -> dict[str, Any]:
         "retry_delay_ms": args.retry_delay_ms,
         "throttle_ms": args.throttle_ms,
         "timeout_ms": args.timeout_ms,
+        "local_api": args.local_api,
     }
 
 

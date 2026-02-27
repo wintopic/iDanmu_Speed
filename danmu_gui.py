@@ -5,14 +5,17 @@ import os
 import queue
 import re
 import danmu_batch_downloader as py_downloader
+import local_danmu_api
+import window_workarea
 import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from urllib import parse as url_parse
 
-APP_TITLE = "iDanmu"
-DEFAULT_BASE_URL = "https://danmu2.dadaguai.edu.deal/zeabur"
+APP_TITLE = "iDanmu_Speed"
+DEFAULT_BASE_URL = local_danmu_api.DEFAULT_LOCAL_BASE_URL
+DEFAULT_TOKEN = local_danmu_api.DEFAULT_LOCAL_TOKEN
 DEFAULT_NAMING_RULE = "{基础名}"
 BASE_TK_SCALING = 96 / 72
 MAX_TK_SCALING = 1.8
@@ -54,17 +57,19 @@ class DanmuApp:
         self.queue_map = {}
         self.queue_seq = 1
         self.api_busy = False
+        self.local_api_handle = None
+        self.local_api_lock = threading.Lock()
 
         self.base_var = tk.StringVar(value=DEFAULT_BASE_URL)
-        self.token_var = tk.StringVar(value="")
+        self.token_var = tk.StringVar(value=DEFAULT_TOKEN)
         self.keyword_var = tk.StringVar(value="子夜归")
         self.source_var = tk.StringVar(value="全部来源")
         self.output_var = tk.StringVar(value=str((self.script_dir / "downloads").resolve()))
         self.format_var = tk.StringVar(value="xml")
         self.naming_rule_var = tk.StringVar(value=DEFAULT_NAMING_RULE)
-        self.concurrency_var = tk.StringVar(value="4")
-        self.retry_var = tk.StringVar(value="4")
-        self.throttle_var = tk.StringVar(value="300")
+        self.concurrency_var = tk.StringVar(value="6")
+        self.retry_var = tk.StringVar(value="5")
+        self.throttle_var = tk.StringVar(value="120")
         self.timeout_var = tk.StringVar(value="60000")
         self.auto_scroll_var = tk.BooleanVar(value=True)
         self.status_var = tk.StringVar(value="状态: 待命")
@@ -76,6 +81,7 @@ class DanmuApp:
         self._build_ui()
         self._ensure_window_visible()
         self._bind_events()
+        self._schedule_startup_workarea_fix()
         self._parse_base_url(auto_log=False)
         self.root.after(120, self._tick_logs)
 
@@ -91,40 +97,74 @@ class DanmuApp:
 
     def _fit_window(self, pref_w: int, pref_h: int, min_w: int, min_h: int):
         self.root.update_idletasks()
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        max_w = max(1, sw - 24)
-        max_h = max(1, sh - 72)
+        left, top, right, bottom = window_workarea.get_window_work_area(self.root)
+        max_w = max(1, right - left)
+        max_h = max(1, bottom - top)
         fit_min_w = min(min_w, max_w)
         fit_min_h = min(min_h, max_h)
         w = max(fit_min_w, min(pref_w, max_w))
         h = max(fit_min_h, min(pref_h, max_h))
-        x = max(0, (sw - w) // 2)
-        y = max(0, (sh - h) // 2)
+        x = left + max(0, (max_w - w) // 2)
+        y = top + max(0, (max_h - h) // 2)
         self.root.maxsize(max_w, max_h)
         self.root.geometry(f"{w}x{h}+{x}+{y}")
         self.root.minsize(fit_min_w, fit_min_h)
 
     def _ensure_window_visible(self):
         self.root.update_idletasks()
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        max_w = max(1, sw - 24)
-        max_h = max(1, sh - 72)
+        work_area = window_workarea.get_window_work_area(self.root)
+        left, top, right, bottom = work_area
+        max_w = max(1, right - left)
+        max_h = max(1, bottom - top)
 
         req_w = self.root.winfo_reqwidth()
         req_h = self.root.winfo_reqheight()
         cur_w = self.root.winfo_width()
         cur_h = self.root.winfo_height()
+        cur_x = self.root.winfo_x()
+        cur_y = self.root.winfo_y()
 
-        target_w = min(max(req_w, cur_w), max_w)
-        target_h = min(max(req_h, cur_h), max_h)
-        x = max(0, (sw - target_w) // 2)
-        y = max(0, (sh - target_h) // 2)
+        min_w = min(960, max_w)
+        min_h = min(620, max_h)
+        target_w = min(max_w, max(min_w, max(req_w, cur_w)))
+        target_h = min(max_h, max(min_h, max(req_h, cur_h)))
+        x, y, target_w, target_h = window_workarea.clamp_window_rect(
+            x=cur_x,
+            y=cur_y,
+            width=target_w,
+            height=target_h,
+            work_area=work_area,
+            min_width=min_w,
+            min_height=min_h,
+        )
 
         self.root.maxsize(max_w, max_h)
-        self.root.minsize(min(960, max_w), min(620, max_h))
-        self.root.geometry(f"{target_w}x{target_h}+{x}+{y}")
+        self.root.minsize(min_w, min_h)
+        target_geometry = f"{target_w}x{target_h}+{x}+{y}"
+        current_geometry = (
+            f"{max(1, self.root.winfo_width())}x{max(1, self.root.winfo_height())}"
+            f"+{self.root.winfo_x()}+{self.root.winfo_y()}"
+        )
+        if current_geometry != target_geometry:
+            self.root.geometry(target_geometry)
+
+    def _schedule_startup_workarea_fix(self):
+        for delay in (120, 450, 1000):
+            self.root.after(delay, self._auto_fix_window_workarea)
+
+    def _auto_fix_window_workarea(self):
+        if self.is_fullscreen:
+            return
+        try:
+            state = self.root.state()
+        except Exception:
+            state = ""
+
+        left, top, right, bottom = window_workarea.get_window_work_area(self.root)
+        self.root.maxsize(max(1, right - left), max(1, bottom - top))
+        if state == "zoomed":
+            return
+        self._ensure_window_visible()
 
     def _build_ui(self):
         style = ttk.Style()
@@ -140,7 +180,7 @@ class DanmuApp:
 
         head = ttk.Frame(container)
         head.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
-        ttk.Label(head, text="iDanmu", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(head, text="iDanmu_Speed", style="Title.TLabel").pack(anchor="w")
         ttk.Label(head, text="搜索剧名 -> 选来源 -> 加入全集 -> 一键下载", foreground="#64748b").pack(anchor="w")
 
         cfg = ttk.LabelFrame(container, text="基础配置", padding=10)
@@ -405,6 +445,8 @@ class DanmuApp:
                 except tk.TclError:
                     pass
                 self._ensure_window_visible()
+        if not enabled:
+            self.root.after(120, self._auto_fix_window_workarea)
 
     def _on_toggle_fullscreen(self, _event=None):
         self._set_fullscreen(not self.is_fullscreen)
@@ -475,7 +517,7 @@ class DanmuApp:
         self.root.config(cursor="watch" if busy else "")
         self.root.update_idletasks()
 
-    def _run_api_task(self, start_status: str, fail_title: str, worker, on_success):
+    def _run_api_task(self, start_status: str, fail_title: str, worker, on_success, show_error_popup: bool = True):
         if self.api_busy:
             return
         self.status_var.set(start_status)
@@ -485,7 +527,7 @@ class DanmuApp:
             try:
                 result = worker()
             except Exception as exc:
-                self.root.after(0, lambda exc=exc: self._finish_api_error(fail_title, exc))
+                self.root.after(0, lambda exc=exc: self._finish_api_error(fail_title, exc, show_error_popup))
                 return
             self.root.after(0, lambda result=result: self._finish_api_success(on_success, result))
 
@@ -497,10 +539,12 @@ class DanmuApp:
         finally:
             self._set_api_busy(False)
 
-    def _finish_api_error(self, title: str, exc: Exception):
+    def _finish_api_error(self, title: str, exc: Exception, show_error_popup: bool = True):
         self._set_api_busy(False)
         self.status_var.set("状态: 待命")
-        messagebox.showerror(title, str(exc))
+        self._append_log(f"{title}: {exc}\n")
+        if show_error_popup:
+            messagebox.showerror(title, str(exc))
 
     def _set_running(self, running: bool):
         self.start_btn.configure(state="disabled" if running else "normal")
@@ -524,7 +568,7 @@ class DanmuApp:
         if not base:
             return None
 
-        candidate = base if re.match(r"^https?://", base, flags=re.I) else "https://" + base
+        candidate = local_danmu_api.with_default_scheme(base)
         parsed = url_parse.urlsplit(candidate)
         if not parsed.netloc:
             return None
@@ -560,12 +604,34 @@ class DanmuApp:
             root += "/" + url_parse.quote(token)
         return root
 
+    def _emit_local_api_log(self, text: str):
+        self.log_queue.put(text)
+
+    def _ensure_local_api_ready(self, base: str, token: str):
+        if not local_danmu_api.is_local_base_url(base):
+            return
+        with self.local_api_lock:
+            if self.local_api_handle is not None and self.local_api_handle.is_alive():
+                return
+            self.local_api_handle = local_danmu_api.ensure_local_api(
+                base_url=base,
+                token=token,
+                log_fn=self._emit_local_api_log,
+            )
+
     def request_json(self, method, path, query=None, payload=None, timeout=35):
-        root = self.api_root()
+        parsed = self._parse_base_url(auto_log=False)
+        if not parsed:
+            raise RuntimeError("请先填写正确的服务地址")
+        base, token = parsed
+        self._ensure_local_api_ready(base, token)
+        root = base.rstrip("/")
+        if token:
+            root += "/" + url_parse.quote(token)
         try:
             retry_count = max(0, int(self.retry_var.get().strip()))
         except Exception:
-            retry_count = 4
+            retry_count = 5
 
         try:
             return py_downloader.request_json_with_retry(
@@ -577,7 +643,7 @@ class DanmuApp:
                 timeout_ms=max(1000, int(timeout * 1000)),
                 retries=max(2, retry_count),
                 retry_delay_ms=2000,
-                user_agent="iDanmu/1.0",
+                user_agent="iDanmu_Speed/1.0",
             )
         except py_downloader.HttpError as exc:
             detail = (exc.body or "").strip()
@@ -729,6 +795,7 @@ class DanmuApp:
             fail_title="搜索失败",
             worker=lambda: self.request_json("GET", "/api/v2/search/anime", query={"keyword": keyword}),
             on_success=lambda data, keyword=keyword: self._on_search_done(keyword, data),
+            show_error_popup=False,
         )
 
     def _on_search_done(self, keyword, data):
@@ -1093,6 +1160,10 @@ class DanmuApp:
                 return
             if self.stop_event is not None:
                 self.stop_event.set()
+        with self.local_api_lock:
+            if self.local_api_handle is not None and self.local_api_handle.started_by_tool:
+                self.local_api_handle.stop()
+            self.local_api_handle = None
         self.root.destroy()
 
 

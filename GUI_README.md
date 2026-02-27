@@ -14,6 +14,8 @@
 python .\danmu_gui.py
 ```
 
+默认服务地址是 `http://127.0.0.1:9321`，程序会自动从 `danmu_api-main` 启动本地 API（首次会自动执行 `npm install`）。
+
 ## 操作流程
 
 1. 填写服务地址（可包含 token）。
@@ -47,6 +49,8 @@ python .\danmu_gui.py
 ```
 
 输出：
-- `dist\iDanmu\iDanmu.exe`
+- `dist\iDanmu_Speed\iDanmu_Speed.exe`
 
-说明：运行 EXE 不需要 Node.js。
+说明：使用纯本地 API 时需要本机可用的 Node.js + npm。
+
+

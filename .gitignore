@@ -12,8 +12,12 @@ env/
 # Build artifacts
 build/
 dist/
+build_*/
+dist_*/
 mini_gui/build/
 mini_gui/dist/
+mini_gui/build_*/
+mini_gui/dist_*/
 *.spec.bak
 
 # Local runtime outputs
@@ -26,9 +30,16 @@ cloud_downloads_test/
 
 # Node dependencies
 node_modules/
+danmu_api-main/node_modules/
 npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Local danmu_api runtime config
+danmu_api-main/config/.env
+
+# Generated local spec
+iDanmuMini.spec
 
 # IDE/editor
 .vscode/

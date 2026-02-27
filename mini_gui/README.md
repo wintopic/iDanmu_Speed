@@ -1,4 +1,4 @@
-﻿# iDanmu Mini GUI
+﻿# iDanmu_Speed Mini GUI
 
 对应文件：`mini_gui.py`
 
@@ -16,6 +16,8 @@
 python .\mini_gui.py
 ```
 
+默认服务地址是 `http://127.0.0.1:9321`，程序会自动从 `..\danmu_api-main` 启动本地 API（首次会自动执行 `npm install`）。
+
 ## 功能
 
 - 自动解析服务地址中的 token
@@ -32,6 +34,8 @@ python .\mini_gui.py
 ```
 
 输出：
-- `mini_gui\dist\iDanmuMini\iDanmuMini.exe`
+- `mini_gui\dist\iDanmu_Speed_Mini\iDanmu_Speed_Mini.exe`
 
-说明：运行 EXE 不需要 Node.js。
+说明：使用纯本地 API 时需要本机可用的 Node.js + npm。
+
+
