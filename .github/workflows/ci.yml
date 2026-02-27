@@ -26,7 +26,7 @@ jobs:
           python -m pip install ruff
 
       - name: Compile Python files
-        run: python -m py_compile danmu_batch_downloader.py danmu_gui.py mini_gui/mini_gui.py
+        run: python -m py_compile danmu_batch_downloader.py danmu_gui.py mini_gui/mini_gui.py local_danmu_api.py window_workarea.py
 
       - name: Ruff lint
-        run: python -m ruff check danmu_batch_downloader.py danmu_gui.py mini_gui/mini_gui.py
+        run: python -m ruff check danmu_batch_downloader.py danmu_gui.py mini_gui/mini_gui.py local_danmu_api.py window_workarea.py
