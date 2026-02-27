@@ -1,23 +1,28 @@
 ﻿# iDanmu Toolkit
 
-涓€涓潰鍚?Windows 鐨勫脊骞曟壒閲忎笅杞藉伐鍏烽泦锛堢函 Python 杩愯鏃讹紝涓嶄緷璧?Node.js锛夈€?
-鍖呭惈锛?
-- `danmu_batch_downloader.py`锛氬懡浠よ鎵归噺涓嬭浇鍣?- `danmu_gui.py`锛氬畬鏁寸増 GUI
-- `mini_gui/mini_gui.py`锛氳交閲忕増 GUI
+面向 Windows 的弹幕批量下载工具集（纯 Python 运行时，不依赖 Node.js）。
 
-## 鍔熻兘
+包含：
+- `danmu_batch_downloader.py`：命令行批量下载器
+- `danmu_gui.py`：完整版 GUI
+- `mini_gui/mini_gui.py`：轻量版 GUI
 
-- 鏀寔 4 绉嶄换鍔℃ā寮忥細`url` / `commentId` / `fileName` / `anime+episode`
-- 鏀寔浠诲姟杈撳叆锛歚jsonl` / `json` / `csv`
-- 鏀寔杈撳嚭鏍煎紡锛歚json` / `xml`
-- 鏀寔骞跺彂銆侀噸璇曘€佽妭娴併€佽秴鏃?- 鑷姩鐢熸垚 `download-report.json`
-- GUI 鏀寔鎼滅储銆侀€夐泦銆侀槦鍒楀鍏ュ鍑?
-## 鐜瑕佹眰
+## 功能
 
-- Windows 10/11锛堟帹鑽愶級
+- 支持 4 种任务模式：`url` / `commentId` / `fileName` / `anime+episode`
+- 支持任务输入：`jsonl` / `json` / `csv`
+- 支持输出格式：`json` / `xml`
+- 支持并发、重试、节流、超时
+- 自动生成 `download-report.json`
+- GUI 支持搜索、选集、队列导入导出
+
+## 环境要求
+
+- Windows 10/11（推荐）
 - Python 3.10+
 
-## 蹇€熷紑濮?
+## 快速开始
+
 ### CLI
 
 ```powershell
@@ -32,13 +37,13 @@ python .\danmu_batch_downloader.py `
   --output .\downloads
 ```
 
-### 瀹屾暣 GUI
+### 完整 GUI
 
 ```powershell
 .\run-gui.bat
 ```
 
-鎴栵細
+或：
 
 ```powershell
 python .\danmu_gui.py
@@ -50,30 +55,31 @@ python .\danmu_gui.py
 .\mini_gui\run-mini-gui.bat
 ```
 
-鎴栵細
+或：
 
 ```powershell
 python .\mini_gui\mini_gui.py
 ```
 
-## 浠诲姟鏂囦欢鏍煎紡
+## 任务文件格式
 
-姣忔潯浠诲姟鑷冲皯婊¤冻涓€绉嶆ā寮忋€?
+每条任务至少满足一种模式。
+
 ### JSONL
 
 ```json
-{"name":"绗?闆?,"commentId":123456}
-{"name":"绗?闆?,"url":"https://v.qq.com/x/cover/xxx.html"}
-{"name":"绗?闆?,"fileName":"鏌愬墽 S01E03"}
-{"name":"绗?闆?,"anime":"鏌愬墽","episode":"4","format":"xml"}
+{"name":"第1集","commentId":123456}
+{"name":"第2集","url":"https://v.qq.com/x/cover/xxx.html"}
+{"name":"第3集","fileName":"某剧 S01E03"}
+{"name":"第4集","anime":"某剧","episode":"4","format":"xml"}
 ```
 
 ### JSON
 
 ```json
 [
-  { "name": "绗?闆?, "commentId": 123456 },
-  { "name": "绗?闆?, "url": "https://v.qq.com/x/cover/xxx.html" }
+  { "name": "第1集", "commentId": 123456 },
+  { "name": "第2集", "url": "https://v.qq.com/x/cover/xxx.html" }
 ]
 ```
 
@@ -81,61 +87,66 @@ python .\mini_gui\mini_gui.py
 
 ```csv
 name,commentId,url,fileName,anime,episode,format,disabled
-绗?闆?123456,,,,,json,false
-绗?闆?,https://v.qq.com/x/cover/xxx.html,,,,json,false
+第1集,123456,,,,,json,false
+第2集,,https://v.qq.com/x/cover/xxx.html,,,,json,false
 ```
 
-## CLI 鍙傛暟
+## CLI 参数
 
-| 鍙傛暟 | 璇存槑 | 榛樿鍊?|
+| 参数 | 说明 | 默认值 |
 |---|---|---|
-| `--input <path>` | 浠诲姟鏂囦欢璺緞锛堝繀濉級 | - |
-| `--base-url <url>` | API 鍦板潃 | `http://127.0.0.1:9321` |
-| `--token <token>` | Token锛堝彲閫夛級 | 绌?|
-| `--output <dir>` | 杈撳嚭鐩綍 | `downloads` |
-| `--format <json\|xml>` | 榛樿杈撳嚭鏍煎紡 | `json` |
-| `--concurrency <n>` | 骞跺彂鏁?| `6` |
-| `--retries <n>` | 閲嶈瘯娆℃暟 | `3` |
-| `--retry-delay-ms <ms>` | 閲嶈瘯闂撮殧锛堝熀纭€锛?| `4000` |
-| `--throttle-ms <ms>` | 浠诲姟鍚姩鑺傛祦 | `0` |
-| `--timeout-ms <ms>` | 璇锋眰瓒呮椂 | `45000` |
+| `--input <path>` | 任务文件路径（必填） | - |
+| `--base-url <url>` | API 地址 | `http://127.0.0.1:9321` |
+| `--token <token>` | Token（可选） | 空 |
+| `--output <dir>` | 输出目录 | `downloads` |
+| `--format <json\|xml>` | 默认输出格式 | `xml` |
+| `--naming-rule <tpl>` | 输出命名模板 | `{index:03d}_{base}` |
+| `--concurrency <n>` | 并发数 | `4` |
+| `--retries <n>` | 重试次数 | `3` |
+| `--retry-delay-ms <ms>` | 重试基础延时 | `2500` |
+| `--throttle-ms <ms>` | 任务启动节流 | `300` |
+| `--timeout-ms <ms>` | 请求超时 | `45000` |
 
-## 鎵撳寘 EXE
+## 打包 EXE
 
 ```powershell
 .\build-exe.bat
 .\mini_gui\build-mini-exe.bat
 ```
 
-杈撳嚭锛?
+输出：
 - `dist\iDanmu\iDanmu.exe`
 - `mini_gui\dist\iDanmuMini\iDanmuMini.exe`
 
-璇存槑锛欵XE 杩愯鏃朵笉闇€瑕?Node.js銆?
-## 鏍￠獙鍛戒护
+说明：EXE 运行时不需要 Node.js。
+
+## 校验命令
 
 ```powershell
 python -m py_compile .\danmu_batch_downloader.py .\danmu_gui.py .\mini_gui\mini_gui.py
 python -m ruff check .\danmu_batch_downloader.py .\danmu_gui.py .\mini_gui\mini_gui.py
 ```
 
-## 鏂囨。绱㈠紩
+## 文档索引
 
-- 瀹屾暣 GUI锛歔GUI_README.md](./GUI_README.md)
-- Mini GUI锛歔mini_gui/README.md](./mini_gui/README.md)
-- CLI锛歔WINDOWS_TOOL_README.md](./WINDOWS_TOOL_README.md)
-- 鍙戝竷娓呭崟锛歔RELEASING.md](./RELEASING.md)
+- 完整 GUI：[GUI_README.md](./GUI_README.md)
+- Mini GUI：[mini_gui/README.md](./mini_gui/README.md)
+- CLI：[WINDOWS_TOOL_README.md](./WINDOWS_TOOL_README.md)
+- 发布清单：[RELEASING.md](./RELEASING.md)
 
-## 寮€婧愬崗浣?
+## 开源协作
+
 - [CONTRIBUTING.md](./CONTRIBUTING.md)
 - [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
 - [SECURITY.md](./SECURITY.md)
 - [CHANGELOG.md](./CHANGELOG.md)
 
-## 鍏嶈矗澹版槑
+## 免责声明
 
-- 鏈」鐩粎鐢ㄤ簬瀛︿範鍜屾妧鏈爺绌躲€?- 浣跨敤鑰呭簲閬靛畧褰撳湴娉曞緥娉曡涓庡钩鍙版潯娆俱€?- 鍥犱笉褰撲娇鐢ㄩ€犳垚鐨勫悗鏋滅敱浣跨敤鑰呰嚜琛屾壙鎷呫€?
+- 本项目仅用于学习和技术研究。
+- 使用者应遵守当地法律法规与平台条款。
+- 因不当使用造成的后果由使用者自行承担。
+
 ## License
 
 [MIT](./LICENSE)
-
