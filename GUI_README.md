@@ -49,7 +49,7 @@ python .\danmu_gui.py
 ```
 
 输出：
-- `dist\iDanmu_Speed\iDanmu_Speed.exe`
+- `dist\iDanmu_Speed.exe`
 
 说明：使用纯本地 API 时需要本机可用的 Node.js + npm。
 

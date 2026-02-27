@@ -129,8 +129,8 @@ name,commentId,url,fileName,anime,episode,format,disabled
 ```
 
 输出：
-- `dist\iDanmu_Speed\iDanmu_Speed.exe`
-- `mini_gui\dist\iDanmu_Speed_Mini\iDanmu_Speed_Mini.exe`
+- `dist\iDanmu_Speed.exe`
+- `mini_gui\dist\iDanmu_Speed_Mini.exe`
 
 说明：EXE 运行时不需要 Node.js。
 如果要使用纯本地 API（`danmu_api-main`），仍需要本机可用的 Node.js + npm。
@@ -148,6 +148,10 @@ python -m ruff check .\danmu_batch_downloader.py .\danmu_gui.py .\mini_gui\mini_
 - Mini GUI：[mini_gui/README.md](./mini_gui/README.md)
 - CLI：[WINDOWS_TOOL_README.md](./WINDOWS_TOOL_README.md)
 - 发布清单：[RELEASING.md](./RELEASING.md)
+
+## 致谢
+
+- 弹幕获取方法代码来源：[huangxd-/danmu_api](https://github.com/huangxd-/danmu_api)
 
 ## 开源协作
 

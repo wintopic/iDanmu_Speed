@@ -33,18 +33,18 @@ jobs:
 
       - name: Build iDanmu_Speed
         run: |
-          python -m PyInstaller --noconfirm --clean --windowed --onedir --name iDanmu_Speed --add-data "danmu_api-main;danmu_api-main" danmu_gui.py
+          python -m PyInstaller --noconfirm --clean --windowed --onefile --name iDanmu_Speed --add-data "danmu_api-main;danmu_api-main" danmu_gui.py
 
       - name: Build iDanmu_Speed_Mini
         run: |
-          python -m PyInstaller --noconfirm --clean --windowed --onedir --name iDanmu_Speed_Mini --paths . --add-data "danmu_api-main;danmu_api-main" mini_gui/mini_gui.py
+          python -m PyInstaller --noconfirm --clean --windowed --onefile --name iDanmu_Speed_Mini --paths . --add-data "danmu_api-main;danmu_api-main" mini_gui/mini_gui.py
 
       - name: Package artifacts
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path artifacts -Force | Out-Null
-          Compress-Archive -Path "dist\iDanmu_Speed\*" -DestinationPath "artifacts\iDanmu_Speed_windows_x64.zip" -Force
-          Compress-Archive -Path "dist\iDanmu_Speed_Mini\*" -DestinationPath "artifacts\iDanmu_Speed_Mini_windows_x64.zip" -Force
+          Compress-Archive -Path "dist\iDanmu_Speed.exe" -DestinationPath "artifacts\iDanmu_Speed_windows_x64.zip" -Force
+          Compress-Archive -Path "dist\iDanmu_Speed_Mini.exe" -DestinationPath "artifacts\iDanmu_Speed_Mini_windows_x64.zip" -Force
           Get-ChildItem artifacts
 
       - name: Upload build artifacts

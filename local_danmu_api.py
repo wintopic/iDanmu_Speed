@@ -162,12 +162,42 @@ def _runtime_base_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
-def resolve_api_repo_dir() -> Path:
+def _materialize_embedded_repo(log_fn: Callable[[str], None] | None = None) -> Path | None:
+    if not getattr(sys, "frozen", False):
+        return None
+
+    runtime_dir = _runtime_base_dir()
+    persistent_repo = runtime_dir / "danmu_api-main"
+    if persistent_repo.is_dir():
+        return persistent_repo
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    if not meipass:
+        return None
+
+    embedded_repo = Path(str(meipass)) / "danmu_api-main"
+    if not embedded_repo.is_dir():
+        return None
+
+    try:
+        _emit(log_fn, f"[local-api] Extracting embedded danmu_api-main to: {persistent_repo}\n")
+        shutil.copytree(embedded_repo, persistent_repo, dirs_exist_ok=True)
+        return persistent_repo
+    except Exception as exc:
+        _emit(log_fn, f"[local-api] Warning: failed to persist embedded danmu_api-main ({exc}).\n")
+        return embedded_repo
+
+
+def resolve_api_repo_dir(log_fn: Callable[[str], None] | None = None) -> Path:
     env_dir = os.environ.get("DANMUPRO_DANMU_API_DIR", "").strip()
     if env_dir:
         candidate = Path(env_dir).expanduser().resolve()
         if candidate.is_dir():
             return candidate
+
+    materialized = _materialize_embedded_repo(log_fn=log_fn)
+    if materialized and materialized.is_dir():
+        return materialized
 
     roots: list[Path] = []
     seen: set[str] = set()
@@ -355,7 +385,7 @@ def ensure_local_api(
     if _is_tcp_open(host, port) and not _is_api_healthy(api_root):
         raise RuntimeError(f"Port {port} is already in use by a non-danmu API service.")
 
-    api_repo_dir = resolve_api_repo_dir()
+    api_repo_dir = resolve_api_repo_dir(log_fn=log_fn)
     _prepare_env_for_local_mode(api_repo_dir, log_fn=log_fn)
     if auto_install_deps:
         _install_node_dependencies(api_repo_dir, log_fn=log_fn)

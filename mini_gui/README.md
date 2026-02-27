@@ -34,7 +34,7 @@ python .\mini_gui.py
 ```
 
 输出：
-- `mini_gui\dist\iDanmu_Speed_Mini\iDanmu_Speed_Mini.exe`
+- `mini_gui\dist\iDanmu_Speed_Mini.exe`
 
 说明：使用纯本地 API 时需要本机可用的 Node.js + npm。
 
